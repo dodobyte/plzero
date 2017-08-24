@@ -51,11 +51,25 @@ type token struct {
 var tok token
 
 type symbol struct {
-	typ string // const, var
-	val int    // int. constant if typ == const
+	typ  string // const, var
+	val  int    // int. constant if typ == const
+	addr int    // address of symbol
 }
-type symtab map[string]symbol        // symbol table for a single scope
-var scopes = make(map[string]symtab) // scopes: procedure, global
+type symtab map[string]symbol // symbol table for a single scope
+
+type procedure struct {
+	addr   int
+	nlocal int
+	sym    symtab
+}
+
+var scopes = make(map[string]procedure) // scopes: procedure, global
+var active = ""
+
+var pc = 0
+var datap = 1000
+var labelid int
+var labels []int
 
 var line = 1
 var reader *bufio.Reader
@@ -132,6 +146,18 @@ func next() {
 	}
 }
 
+func addLabel() {
+	labelid++
+	labels = append(labels, labelid)
+}
+
+func getLabel() int {
+	last := len(labels) - 1
+	lbl := labels[last]
+	labels = labels[:last]
+	return lbl
+}
+
 func accept(tokType string) {
 	next()
 	if tok.typ != tokType {
@@ -146,19 +172,49 @@ func expect(tokType string) {
 	next()
 }
 
+func check(name string, assignOp bool) {
+	sym, ok := scopes[active].sym[name]
+	g_sym, g_ok := scopes[""].sym[name]
+	switch {
+	case ok:
+		if assignOp && sym.typ == "const" {
+			fatal(name + " is constant")
+		}
+	case g_ok:
+		if assignOp && g_sym.typ == "const" {
+			fatal(name + " is constant")
+		}
+	default:
+		fatal(name + " undeclared")
+	}
+}
+
 func declare(scope, typ, name string, val int) {
-	_, ok := scopes[scope][name]
+	_, ok := scopes[scope].sym[name]
 	if ok {
 		fatal(name + " redeclared")
 	}
-	scopes[scope][name] = symbol{typ, val}
+	if scope == "" {
+		scopes[scope].sym[name] = symbol{typ, val, datap}
+		datap += 4
+		fmt.Println(name, "dd", val)
+	} else {
+		proc := scopes[scope]
+		addr := proc.nlocal * 4
+		proc.nlocal++
+		proc.sym[name] = symbol{typ, val, addr}
+		scopes[scope] = proc
+	}
 }
 
 func factor() {
 	switch tok.typ {
 	case "identifier":
+		check(tok.name, false)
+		genIdent(tok.name)
 		next()
 	case "integer":
+		genImm(tok.val)
 		next()
 	case "(":
 		next()
@@ -172,71 +228,86 @@ func factor() {
 func term() {
 	factor()
 	for tok.typ == "*" || tok.typ == "/" {
-		//op := tok.typ
+		op := tok.typ
 		next()
 		factor()
+		if op == "*" {
+			genMul()
+		} else {
+			genDiv()
+		}
 	}
 }
 
 func expression() {
-	//neg := false
+	neg := false
 	if tok.typ == "+" || tok.typ == "-" {
 		if tok.typ == "-" {
-			//neg = true
+			neg = true
 		}
 		next()
 	}
 	term()
+	if neg {
+		genNeg()
+	}
 	for tok.typ == "+" || tok.typ == "-" {
-		//op := tok.typ
+		op := tok.typ
 		next()
 		term()
+		genAddSub(op)
 	}
 }
 
 func condition() {
+	addLabel()
 	if tok.typ == "odd" {
 		next()
 		expression()
+		genOdd()
 	} else {
 		expression()
-		switch tok.typ {
-		case "=", "#", "<", "<=", ">", ">=":
-			next()
-			expression()
-		default:
-			fatal("comparison operator expected")
-		}
+		cond := tok.typ
+		next()
+		expression()
+		genCond(cond)
 	}
 }
 
-func statement(scope string) {
+func statement() {
 	switch tok.typ {
 	case "identifier":
+		name := tok.name
+		check(name, true)
 		accept(":=")
 		next()
 		expression()
-	case "call", "read":
+		genAssign(name)
+	case "call":
 		accept("identifier")
+		genCall(tok.name)
 		next()
-	case "write":
-		expression()
 	case "if":
 		next()
 		condition()
 		expect("then")
-		statement(scope)
+		statement()
+		genLabel()
 	case "while":
+		wpc := labelid
+		fmt.Printf("WL%d:\n", wpc)
 		next()
 		condition()
 		expect("do")
-		statement(scope)
+		statement()
+		genJmp(wpc)
+		genLabel()
 	case "begin":
 		next()
-		statement(scope)
+		statement()
 		for tok.typ == ";" {
 			next()
-			statement(scope)
+			statement()
 		}
 		expect("end")
 	default:
@@ -247,7 +318,8 @@ func statement(scope string) {
 func block(scope string) {
 	next()
 	if _, ok := scopes[scope]; !ok {
-		scopes[scope] = make(symtab)
+		scopes[scope] = procedure{addr: pc, sym: make(symtab)}
+		active = scope
 	}
 	if tok.typ == "const" {
 		for {
@@ -280,6 +352,9 @@ func block(scope string) {
 		}
 		next()
 	}
+	if scope == "" {
+		fmt.Println("section .text")
+	}
 	for tok.typ == "procedure" {
 		accept("identifier")
 		name := tok.name
@@ -287,18 +362,41 @@ func block(scope string) {
 		block(name)
 		expect(";")
 	}
-	statement(scope)
+	if scope != "" {
+		genProc(scope, "head")
+	} else {
+		fmt.Println("start:")
+	}
+	statement()
+	if scope != "" {
+		genProc(scope, "end")
+	}
+	active = ""
 }
 
 func program() {
+	fmt.Println("[bits 32]")
+	fmt.Println("extern _exit")
+	fmt.Println("global start")
+	fmt.Println("section .data")
 	block("") // global scope
 	if tok.typ != "." {
 		fatal(". expected")
 	}
+	fmt.Println("push 0")
+	fmt.Println("call _exit")
 }
 
 func main() {
-	reader = bufio.NewReader(os.Stdin)
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: plc <source>\n")
+		os.Exit(1)
+	}
+	f, err := os.Open(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	reader = bufio.NewReader(f)
 	program()
-	fmt.Println(scopes)
+	f.Close()
 }
