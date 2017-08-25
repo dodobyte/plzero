@@ -49,13 +49,19 @@ begin
 end;
 
 begin
-  x := m;
-  y := n;
+  read x;
+  read y;
   call multiply;
-  x := 25;
-  y :=  3;
+  write z;
+  
+  read x;
+  read y;
   call divide;
-  x := 84;
-  y := 36;
-  call gcd
+  write q;
+  write r;
+  
+  read x;
+  read y;
+  call gcd;
+  write z
 end.
