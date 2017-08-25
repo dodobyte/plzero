@@ -66,11 +66,6 @@ type procedure struct {
 var scopes = make(map[string]procedure) // scopes: procedure, global
 var active = ""
 
-var pc = 0
-var datap = 1000
-var labelid int
-var labels []int
-
 var line = 1
 var reader *bufio.Reader
 
@@ -146,18 +141,6 @@ func next() {
 	}
 }
 
-func addLabel() {
-	labelid++
-	labels = append(labels, labelid)
-}
-
-func getLabel() int {
-	last := len(labels) - 1
-	lbl := labels[last]
-	labels = labels[:last]
-	return lbl
-}
-
 func accept(tokType string) {
 	next()
 	if tok.typ != tokType {
@@ -197,7 +180,7 @@ func declare(scope, typ, name string, val int) {
 	if scope == "" {
 		scopes[scope].sym[name] = symbol{typ, val, datap}
 		datap += 4
-		fmt.Println(name, "dd", val)
+		genGlobVar(val)
 	} else {
 		proc := scopes[scope]
 		addr := proc.nlocal * 4
@@ -260,7 +243,6 @@ func expression() {
 }
 
 func condition() {
-	addLabel()
 	if tok.typ == "odd" {
 		next()
 		expression()
@@ -287,6 +269,15 @@ func statement() {
 		accept("identifier")
 		genCall(tok.name)
 		next()
+	case "read":
+		accept("identifier")
+		check(tok.name, true)
+		genRead(tok.name)
+		next()
+	case "write":
+		next()
+		expression()
+		genWrite()
 	case "if":
 		next()
 		condition()
@@ -294,8 +285,7 @@ func statement() {
 		statement()
 		genLabel()
 	case "while":
-		wpc := labelid
-		fmt.Printf("WL%d:\n", wpc)
+		wpc := pc
 		next()
 		condition()
 		expect("do")
@@ -352,9 +342,6 @@ func block(scope string) {
 		}
 		next()
 	}
-	if scope == "" {
-		fmt.Println("section .text")
-	}
 	for tok.typ == "procedure" {
 		accept("identifier")
 		name := tok.name
@@ -365,7 +352,7 @@ func block(scope string) {
 	if scope != "" {
 		genProc(scope, "head")
 	} else {
-		fmt.Println("start:")
+		ep = textBase + importSize + pc
 	}
 	statement()
 	if scope != "" {
@@ -375,28 +362,8 @@ func block(scope string) {
 }
 
 func program() {
-	fmt.Println("[bits 32]")
-	fmt.Println("extern _exit")
-	fmt.Println("global start")
-	fmt.Println("section .data")
 	block("") // global scope
 	if tok.typ != "." {
 		fatal(". expected")
 	}
-	fmt.Println("push 0")
-	fmt.Println("call _exit")
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: plc <source>\n")
-		os.Exit(1)
-	}
-	f, err := os.Open(os.Args[1])
-	if err != nil {
-		panic(err)
-	}
-	reader = bufio.NewReader(f)
-	program()
-	f.Close()
 }
