@@ -36,6 +36,13 @@ func int2byte(data int) []byte {
 	return buf.Bytes()
 }
 
+func padding(num, pad int) int {
+	if num%pad == 0 {
+		return 0
+	}
+	return pad - num%pad
+}
+
 /*
  * Since the necessary functions are predefined, we can construct
  * import table before compiling program.
@@ -77,11 +84,15 @@ func createImports() {
  * Construct necessary data structures for a minimum valid PE file.
  * Create final exe file with the compiled code and dump it to file.
  */
-func dumpExe(code []byte) {
-	f, err := os.Create("out.exe")
+func dumpExe(code []byte, file string) {
+	f, err := os.Create(file)
 	if err != nil {
 		panic(err)
 	}
+
+	/* code section padding */
+	pad := padding(len(code), 512)
+	code = append(code, make([]byte, pad)...)
 
 	/* DOS header. */
 	f.Write([]byte("MZ"))
@@ -114,7 +125,7 @@ func dumpExe(code []byte) {
 	f.Write([]byte("\x04\x00\x00\x00\x00\x00\x00\x00"))
 
 	/* sizeof image & headers */
-	pad := 0x1000 - len(code)%0x1000
+	pad = padding(len(code), 0x1000)
 	f.Write(int2byte(len(code) + pad + 0x1000))
 	f.Write([]byte("\x00\x02\x00\x00\x00\x00\x00\x00"))
 
@@ -141,13 +152,13 @@ func dumpExe(code []byte) {
 	f.Write(make([]byte, 12))
 	f.Write([]byte("\x00\x00\x50\xE0"))
 
-	/* padding */
+	/* pe header padding */
 	ndump, err := f.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		panic(err)
 	}
-	f.Write(make([]byte, 512-ndump%512))
+	f.Write(make([]byte, padding(int(ndump), 512)))
 
-	/* write section */
+	/* write the section */
 	f.Write(code)
 }

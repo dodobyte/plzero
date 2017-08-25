@@ -63,7 +63,7 @@ type procedure struct {
 	sym    symtab
 }
 
-var scopes = make(map[string]procedure) // scopes: procedure, global
+var scopes = make(map[string]*procedure) // scopes: procedure, global
 var active = ""
 
 var line = 1
@@ -172,6 +172,12 @@ func check(name string, assignOp bool) {
 	}
 }
 
+func checkCall(name string) {
+	if _, ok := scopes[name]; !ok {
+		fatal(name + " undeclared")
+	}
+}
+
 func declare(scope, typ, name string, val int) {
 	_, ok := scopes[scope].sym[name]
 	if ok {
@@ -186,7 +192,6 @@ func declare(scope, typ, name string, val int) {
 		addr := proc.nlocal * 4
 		proc.nlocal++
 		proc.sym[name] = symbol{typ, val, addr}
-		scopes[scope] = proc
 	}
 }
 
@@ -267,6 +272,7 @@ func statement() {
 		genAssign(name)
 	case "call":
 		accept("identifier")
+		checkCall(tok.name)
 		genCall(tok.name)
 		next()
 	case "read":
@@ -307,10 +313,11 @@ func statement() {
 
 func block(scope string) {
 	next()
-	if _, ok := scopes[scope]; !ok {
-		scopes[scope] = procedure{addr: pc, sym: make(symtab)}
-		active = scope
+	if _, ok := scopes[scope]; ok {
+		fatal(scope + " redeclared.")
 	}
+	scopes[scope] = &procedure{sym: make(symtab)}
+	active = scope
 	if tok.typ == "const" {
 		for {
 			accept("identifier")
@@ -349,7 +356,9 @@ func block(scope string) {
 		block(name)
 		expect(";")
 	}
+	active = scope
 	if scope != "" {
+		scopes[scope].addr = pc
 		genProc(scope, "head")
 	} else {
 		ep = textBase + importSize + pc
@@ -358,7 +367,6 @@ func block(scope string) {
 	if scope != "" {
 		genProc(scope, "end")
 	}
-	active = ""
 }
 
 func program() {

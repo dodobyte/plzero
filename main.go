@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func compile(name string) {
@@ -24,12 +25,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: pl0 <source>\n")
 		os.Exit(1)
 	}
+
+	infile := os.Args[1]
+	outfile := strings.Split(infile, ".")[0] + ".exe"
+
 	createImports()
 	code.Write(imports)
+
 	compile(os.Args[1])
-	cod := code.Bytes()
-	genFixup(cod[len(imports):])
-	pad := 512 - len(cod)%512
-	cod = append(cod, make([]byte, pad)...)
-	dumpExe(cod)
+
+	codeByte := code.Bytes()
+	genFixup(codeByte[len(imports):])
+
+	dumpExe(codeByte, outfile)
 }

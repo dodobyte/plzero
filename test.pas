@@ -52,7 +52,6 @@ begin
   x := m;
   y := n;
   call multiply;
-  write z;
   x := 25;
   y :=  3;
   call divide;
