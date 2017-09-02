@@ -158,12 +158,17 @@ func genJmp(jpc int) {
 }
 
 func genProc(name, part string) {
+	nlocal := scopes[name].nlocal
 	if part == "head" {
-		out("bb", 0x81, 0xEC)
-		out("u", scopes[name].nlocal*4)
+		if nlocal > 0 {
+			out("bb", 0x81, 0xEC)
+			out("u", nlocal*4)
+		}
 	} else {
-		out("bb", 0x81, 0xC4)
-		out("u", scopes[name].nlocal*4)
+		if nlocal > 0 {
+			out("bb", 0x81, 0xC4)
+			out("u", scopes[name].nlocal*4)
+		}
 		out("b", 0xC3)
 	}
 }
