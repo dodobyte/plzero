@@ -167,7 +167,7 @@ func genProc(name, part string) {
 	} else {
 		if nlocal > 0 {
 			out("bb", 0x81, 0xC4)
-			out("u", scopes[name].nlocal*4)
+			out("u", nlocal*4)
 		}
 		out("b", 0xC3)
 	}
