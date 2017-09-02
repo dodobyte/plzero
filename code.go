@@ -220,9 +220,6 @@ func genFixup(cod []byte) {
 }
 
 func genRead(name string) {
-	genPush("eax")
-	genPush("ecx")
-	genPush("edx")
 	glob := active == ""
 	sym, ok := scopes[active].sym[name]
 	if !ok {
@@ -240,23 +237,14 @@ func genRead(name string) {
 	out("bu", 0x68, sFmtAddr)
 	out("bbu", 0xFF, 0x15, imp_scanf)
 	out("bbb", 0x83, 0xC4, 0x08)
-	genPop("edx")
-	genPop("ecx")
-	genPop("eax")
 }
 
 func genWrite() {
 	reg--
-	genPush("eax")
-	genPush("ecx")
-	genPush("edx")
 	genPush(regs[reg])
 	out("bu", 0x68, pFmtAddr)
 	out("bbu", 0xFF, 0x15, imp_printf)
 	out("bbb", 0x83, 0xC4, 0x08)
-	genPop("edx")
-	genPop("ecx")
-	genPop("eax")
 }
 
 func genExit() {
