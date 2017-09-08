@@ -98,8 +98,8 @@ func genDiv() {
 		genPop("ebx")
 		genPop("eax")
 	}
-	/* xor edx, edx */
-	out("bb", 0x31, 0xD2)
+	/* cdq */
+	out("b", 0x99)
 	/* idiv ebx */
 	out("bb", 0xF7, 0xFB)
 	if reg > 2 {
